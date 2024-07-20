@@ -1,0 +1,60 @@
+version: '3.8'
+
+x-php: &php
+  build: .
+  working_dir: /app
+  env_file:
+    - .env
+  volumes:
+    - .:/app
+  tty: true
+  stdin_open: true
+  networks:
+    - alerting_network
+
+services:
+  producer:
+    <<: *php
+    depends_on:
+      broker:
+        condition: service_healthy
+
+  consumer:
+    <<: *php
+    command: ./bin/consume
+    depends_on:
+      broker:
+        condition: service_healthy
+      smtp:
+        condition: service_started
+
+  broker:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - broker_data:/var/lib/rabbitmq
+      - broker_log:/var/log/rabbitmq
+    networks:
+      - alerting_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  smtp:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - alerting_network
+
+volumes:
+  broker_data:
+  broker_log:
+
+networks:
+  alerting_network:
